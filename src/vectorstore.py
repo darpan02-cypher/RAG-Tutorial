@@ -22,9 +22,19 @@ class FaissVectorStore:
         print(f"[INFO] Building vector store from {len(documents)} raw documents...")
         emb_pipe = EmbeddingPipeline(model_name=self.embedding_model, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         chunks = emb_pipe.chunk_documents(documents)
+        if not documents:
+            print("[WARN] No documents provided to build the vector store. Skipping build.")
+            return
+        if not chunks:
+            print("[WARN] Document splitting produced no chunks. Skipping build.")
+            return
         embeddings = emb_pipe.embed_chunks(chunks)
+        emb_array = np.array(embeddings)
+        if emb_array.size == 0 or emb_array.ndim == 1:
+            print("[WARN] No embeddings produced (empty or invalid shape). Skipping build.")
+            return
         metadatas = [{"text": chunk.page_content} for chunk in chunks]
-        self.add_embeddings(np.array(embeddings).astype('float32'), metadatas)
+        self.add_embeddings(emb_array.astype('float32'), metadatas)
         self.save()
         print(f"[INFO] Vector store built and saved to {self.persist_dir}")
 
@@ -48,10 +58,19 @@ class FaissVectorStore:
     def load(self):
         faiss_path = os.path.join(self.persist_dir, "faiss.index")
         meta_path = os.path.join(self.persist_dir, "metadata.pkl")
-        self.index = faiss.read_index(faiss_path)
-        with open(meta_path, "rb") as f:
-            self.metadata = pickle.load(f)
-        print(f"[INFO] Loaded Faiss index and metadata from {self.persist_dir}")
+        # Check existence first and fail gracefully
+        if not os.path.exists(faiss_path) or not os.path.exists(meta_path):
+            print(f"[WARN] Faiss index or metadata not found in {self.persist_dir}.")
+            return False
+        try:
+            self.index = faiss.read_index(faiss_path)
+            with open(meta_path, "rb") as f:
+                self.metadata = pickle.load(f)
+            print(f"[INFO] Loaded Faiss index and metadata from {self.persist_dir}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to load Faiss store: {e}")
+            return False
 
     def search(self, query_embedding: np.ndarray, top_k: int = 5):
         D, I = self.index.search(query_embedding, top_k)

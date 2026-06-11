@@ -1,0 +1,3 @@
+Attention is a mechanism that allows models to focus on relevant parts of the input when producing an output. It computes a weighted sum of input representations where weights represent relevance.
+
+This short document explains the basics of attention, including query, key, and value vectors, and how they are used in transformer architectures.
